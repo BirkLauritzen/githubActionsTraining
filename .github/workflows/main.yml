@@ -1,5 +1,9 @@
 name: Main workflow
 on: push
+env: # Set the secret as an input
+  docker_username: BirkLauritzen
+  docker_password: ${{ secrets.GITHUB_TOKEN }} #Nees to be set to be made available to the workflow
+  GIT_COMMIT: ${{ github.sha }}
 jobs:
   Build:
     runs-on: ubuntu-latest
@@ -11,23 +15,26 @@ jobs:
         run: ci/build-app.sh 
       - name: Test
         run: ci/unit-test-app.sh
-      - name: Upload a Build Artifact # Name of the step
+      - name: Upload repo # Name of the step
         uses: actions/upload-artifact@v4 # Action to use
         with: # Parameters for the action
-          name: my-artifact # Name of the artifact to upload. Optional. Default is 'artifact
+          name: code # Name of the artifact to upload. Optional. Default is 'artifact
           path: . # A file, directory or wildcard pattern that describes what to upload. Required.
-      - name: Download a single artifact # Name of the step
-        uses: actions/download-artifact@v4 # Action to use
-        with: # Parameters for the action
-          name: my-artifact # Name of the artifact to download. Optional. If unspecified, all artifacts for the run are downloaded.
-          path: .     # Destination path. Supports basic tilde expansion.  # Optional. Default is $GITHUB_WORKSPACE
+  Linting:
+    runs-on: ubuntu-latest
+    needs: [Build]
+    steps:
+      - name: Download code
+        uses: actions/download-artifact@v4
+        with:
+          name: code
+          path: .
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           # super-linter needs the full git history to get the
           # list of files that changed across commits
           fetch-depth: 0
-
       - name: Super-linter
         uses: super-linter/super-linter/slim@v7.1.0 # x-release-please-version
         env:
@@ -35,3 +42,21 @@ jobs:
           # To report GitHub Actions status checks
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DISABLE_ERRORS: true  
+
+  Docker-image:
+    runs-on: ubuntu-latest
+    needs: [Build]
+    permissions:
+      packages: write
+    steps:
+      - name: Download code
+        uses: actions/download-artifact@v4
+        with:
+          name: code
+          path: .
+      - name: ls
+        run: ls -la ci
+      - name: build docker
+        run: bash ci/build-docker.sh
+      - name: push docker
+        run: bash ci/push-docker.sh
